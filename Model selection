@@ -1,9 +1,9 @@
 library(devtools)
 install_github("cjvanlissa/metaforest")
-devtools::install_github("wviechtb/metafor")
+install_github("wviechtb/metafor")
 source("packages.R")
 
-dat <- read.csv("~/OneDrive/OneDrive - Universitat Autònoma de Barcelona/FACEreview/data/AGB_effects2019.csv",na.strings=c("",NA))
+dat <- read.csv("AGB_effects2019.csv",na.strings=c("",NA))
 dat <- dat[complete.cases(dat$id),]
 dat <- dplyr::filter(dat,!is.na(CNr),!is.na(PamountBray09_new)) %>%
   rename(Age=Age2,Nyears=nyears,pH=ph, P=PamountBray09_new,Clay=ClayPerc, TotN=totN.) %>% dplyr::select(-"Source.Reference")
@@ -16,15 +16,15 @@ levels(dat$Biome) <- list("Bo" = "Boreal_Forest","Cr"="Cropland", "Gr"="Grasslan
 # Record which variables have a lot of missingness, so that we might later be
 # skeptical about any findings involving those variables
 
-moderators <- c(# REAL "field" information specific for the individual studies
+moderators <- c(# "field" information specific for the individual studies
   "Myc", "CNr", "P", "TotN", "pH", # Nutritional moderators. Myc = mycorrhizal type, CNr= soil C:N ratio,
   "Biome", "Fumigation.type", "Age", "Nyears", "deltaco2", # Experimental moderators
   "MAT", "MAP2", # Climatic moderators. MAT=temperature, MAP2=precipitation
-  # EXTRACTED information from global datasets at ~1km resolution
+  # EXTRACTED information from global datasets 
   "Clay", "CEC", "ENa", "Ktot", # Nutritional moderators
-  "PamountOlsen", "PamountMehlich", "Pretention", "PTot", "Ptot_ORNL", "Plabile", "Porg", "Poccluded", "Psecondary", "Papatite", # Alternative approaches to account for phosphorus (P) availability. Lots of NAs in these products
-  "AGTcru0", "AGTcru5", "GDD", "SolRad", "Twarm" , "Gaussen", "MoistureIndex", # Climatic moderators.These should be highly correlated with MAT and MAP2
-  "Alpha", "PETcru", "AETsplash", "PETsplash2", "waterlim", "moisture") # Climatic moderators. These should be highly correlated with MAP2 and MAT    
+  "PamountOlsen", "PamountMehlich", "Pretention", "PTot", "Ptot_ORNL", "Plabile", "Porg", "Poccluded", "Psecondary", "Papatite", # Alternative approaches to account for phosphorus (P) availability
+  "AGTcru0", "AGTcru5", "GDD", "SolRad", "Twarm" , "Gaussen", "MoistureIndex", # Climatic moderators
+  "Alpha", "PETcru", "AETsplash", "PETsplash2", "waterlim", "moisture") # Climatic moderators.
 
 df <- dat[, moderators]
 missingness <- sapply(df, function(x) sum(is.na(x))/length(x))
@@ -37,16 +37,6 @@ names(df)[sapply(df, function(x) class(x) %in% c("factor", "character")) & missi
 
 info <- dplyr::select(dat,obs,id:SPECIES,N, amb.rep:Lon, Myc, Biome, Fumigation.type, MAPraw)
 
-# Because both MetaForest and metafor require complete data, and no methods for
-# multiple imputation are currently available, we applied single imputation 
-# using the missForest algorithm (Stekhoven & Bühlmann, 2012; missRanger
-# implementation). In simulation studies, this random forests-based imputation
-# method outperformed multiple imputation. Like any random forests-based
-# technique, The main advantage of this method are that it does not make any
-# distributional assumptions, which means it easily handles (multivariate)
-# non-normal data and complex interactions and non-linear relations amongst
-# the data. Moreover, it does not extrapolate beyond the range of the observed
-# data.
 continuous_vars <- dplyr::select(dat,obs,Nyears,MAT:TotN,P,CEC,Pretention,PamountOlsen:PTot,
                                  ENa:Clay,AGTcru0:PETcru,AETsplash:MWD,MAP2,Age,deltaco2, MoistureIndex, Gaussen) %>% 
   mutate_if(~ is.numeric(.) | is.integer(.), funs(replace(., .<0, NA))) %>% # -999 or similar negative values are really NAs
@@ -67,7 +57,7 @@ dat$P_pca <- p.pca$scores[,1]
 fa.parallel(dat[,c("Clay", "CEC", "ENa", "Ktot")], use = "pairwise.complete.obs")
 principal(dat[,c("Clay", "CEC", "ENa", "Ktot")], nfactors = 2)
 
-# Dimension reduction on semi-theoretical grouds; these are all climatic moderators
+# Dimension reduction; these are all climatic moderators
 fa.parallel(dat[,c("AGTcru0", "AGTcru5", "GDD", "SolRad", "Twarm", "Alpha", "PETcru", "AETsplash", "PETsplash2", "waterlim", "moisture","Gaussen", "MoistureIndex")], use = "pairwise.complete.obs")
 # Parallel analysis suggests two components
 clima.pca <- principal(dat[,c("AGTcru0", "AGTcru5", "GDD", "SolRad", "Twarm", "Alpha", "PETcru", "AETsplash", "PETsplash2", "waterlim", "moisture", "Gaussen", "MoistureIndex")], nfactors = 2)
@@ -81,15 +71,6 @@ saveRDS(dat, "imputed_dat.RData")
 #######################
 
 # Meta-Forest
-
-moderators <- c(
-  # REAL "field" information specific for the individual studies
-  "Myc", "CNr", "P", "TotN", "pH", # Nutritional moderators. Myc = mycorrhizal type, CNr= soil C:N ratio,
-  "Biome", "Fumigation.type", "Age", "Nyears", "deltaco2", # Experimental moderators
-  "MAT", "MAP2", # Climatic moderators. MAT=temperature, MAP2=precipitation
-  # EXTRACTED information from global datasets at ~1km resolution
-  "Clay", "CEC", "ENa", "Ktot", # Nutritional moderators
-  "P_pca", "clima_pca1", "clima_pca2") # Factor scores for phosphorous and climate
 
 set.seed(36326)
 # Check how many iterations metaforest needs to converge
@@ -138,14 +119,10 @@ mf_cv
 #The final values used for the model were whichweights = fixed, mtry = 5 and min.node.size = 6.
 saveRDS(mf_cv, "mf_cv.RData")
 
-# Cross-validated R2 of the final model:
-mf_cv$results[which.min(mf_cv$results$RMSE), ]$Rsquared
 # Extract final model
 final <- mf_cv$finalModel
 # Plot convergence
 plot(final)
-# OOB  R2 of the final model:
-final$forest$r.squared
 
 # Plot variable importance
 cairo_pdf("figures/VI.pdf", width = 8.27)
@@ -204,14 +181,6 @@ X_mods <- model.matrix(~ Myc + Myc*CNr_recip + Myc*P_recip + Myc*P_pca_recip + B
 
 # Estimate the model
 rma_model <- rma(yi = Y, vi = V, mods = X_mods, control=list(stepadj=0.5))
-rma_model
-anova(rma_model, btt=6:10) # Biome
-anova(rma_model, btt=15:16) # Fumigation.type
-model10 <- round(coef(summary(rma_model)),4)
-write.csv(model10,"model_results_10pred.csv")
-# Load functions to generate uniform grids
-source("marginal_predictions.R")
-
 
 # Prune the model once
 X_mods_pruned <- model.matrix(~ Myc + Myc*CNr_recip + Myc*P_recip + Fumigation.type, data)[,-1]
@@ -223,8 +192,6 @@ rma_pruned_cv <- train(y = Y,
                        trControl = cv_folds
 )
 
-# Cross-validated R2
-rma_pruned_cv$results$Rsquared
 
 # Inspect coefficients
 final_rma <- rma_pruned_cv$finalModel
@@ -246,8 +213,3 @@ res2 <- glmulti(dat$yi ~ Myc + CNr_recip + P_recip + Biome + MAP2 + MAT + Fumiga
                     deltaB = 0,
                     marginality = TRUE,
                     data=rma_dat, level=2, fitfunction=rma.glmulti)
-cairo_pdf("figures/AICcRVI.pdf", width = 8.27)
-plot(res2, type="s")
-dev.off()
-imp <- data.frame(predictor=names(extractRVI(res2)), importance=extractRVI(res.all2))
-write.csv(imp, "importance.csv")
