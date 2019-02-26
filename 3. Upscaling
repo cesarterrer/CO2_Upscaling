@@ -75,3 +75,62 @@ AllrelSE <- overlay(AllrelSE,fun=function(x){ifelse(x<0, 0, x)})
 
 Bse <- Bcurrent + Bcurrent * relSE/100
 BseInc <- Bse - Bcurrent
+
+
+#####################
+### Total Biomass ###
+#####################
+
+########### ESA - PAN ###########
+esa <- raster("ESA_PANratios.tif")
+
+total.s <- stack(esa,Bincrement, Bse_Inc)
+total.df <- as.data.frame(total.s)
+
+total.df <- group_by(total.df, ESA_PANratios_category) %>%  
+  dplyr::summarise (IncSum= sum(layer.1, na.rm=T),
+                    IncSumSE= sum(layer.2, na.rm=T)) %>% 
+  mutate(IncSumPg=round(IncSum*10^-9,2),
+         IncSumSEPg=round(IncSumSE*10^-9,2)) %>% droplevels()
+
+#Calculate the increase in TOTAL BIOMASS using TB ratios from Liu et al.
+library("readxl")
+ratios <- read_excel("TBratio.xlsx", col_types = c("text", "numeric", "numeric", "guess", "guess"))
+
+total.df <- merge(total.df,ratios, "ESA_PANratios_category")
+total.df$TotBiom <- round(total.df$IncSumPg * total.df$TBratio,2)
+total.df$TotBiomSE <- round(total.df$IncSumSEPg * total.df$TBratio,2)
+
+CO2inc <- mean(data$co2conc)-mean(data$ambco2)
+sum(total.df$IncSumPg) * 100/ CO2inc # CO2 increase is 250ppm, we want 100ppm
+sum(total.df$IncSumSEPg) * 100/ CO2inc
+TotBiom100r <- sum(total.df$TotBiom) * 100/ CO2inc
+TotBiomSE100r <- sum(total.df$TotBiomSE) * 100/ CO2inc
+
+#write to a CSV file
+write.csv(total.df, file = "tables/TotalBiomass.csv")
+
+# Aggregation 
+agg <- total.df %>% dplyr::group_by(Aggregate) %>% dplyr::summarise(TotBiom_agg=sum(TotBiom), TotBiom_agg_SE= sum(TotBiomSE))
+write.csv(agg, "tables/TotalBiomassAggregated.csv")
+sum(agg$TotBiom_agg); sum(agg$TotBiom_agg_SE)
+
+### MODIS - PAN ###
+modis <- raster("MODIS_PANratios.tif")
+modis[modis==0] <- NA
+crs(modis) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0" 
+
+modis.new <- projectRaster(modis, Bincrement, method="ngb")
+s.modis <- stack(modis.new,Bincrement)
+modis.df <- as.data.frame(s.modis)
+modis.df <- modis.df %>% filter(!is.na(layer.2), layer.2 != 0) %>% group_by(layer.1) %>%  
+  dplyr::summarise (IncSum= sum(layer.2, na.rm=T)) %>% mutate(IncSumPg=round(IncSum*10^-9,2)) %>% droplevels()
+
+# Calculate the increase in TOTAL BIOMASS using TB ratios from Liu et al.
+ratios <- read.csv("TBratiosMODIS.csv")
+modis.df <- merge(modis.df,ratios, by.x="layer.1", by.y="ID")
+modis.df$TotBiom <- round(modis.df$IncSumPg * modis.df$TBratio,2)
+sum(modis.df$IncSumPg) * 100/ 250
+sum(modis.df$TotBiom) * 100/ 250
+write.csv(modis.df, file = "tables/TotalBiomassMODIS.csv")
+
