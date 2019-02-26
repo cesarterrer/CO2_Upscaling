@@ -1,0 +1,165 @@
+library(raster)
+library(RColorBrewer)
+library(grid)
+library(ggplot2)
+library(dplyr)
+library(rworldmap)
+ibrary(cowplot)
+library(scales)
+library(nord)
+
+# Increment
+inc <- raster("Maps/CO2absEffect.tif")  # Mg
+a <- area(inc)
+inc2 <- overlay(inc, a, fun=function(x,y) x/(y*100))
+crs(inc2) <- "+proj=longlat"
+inc2p <- projectRaster(inc2,crs="+proj=robin",over=T)
+inc2.df = as.data.frame(inc2p,xy=TRUE)
+colnames(inc2.df) <- c('x','y', 'inc2')
+
+# Percentage
+perc <- raster("Maps/CO2relEffect.tif")
+crs(perc) <- "+proj=longlat"
+percp <- projectRaster(perc,crs="+proj=robin",over=T)
+perc.df = as.data.frame(percp,xy=TRUE)
+colnames(perc.df) <- c('x','y', 'perc')
+
+# Percentage SE
+percSE <- raster("maps/CO2relSE.tif")
+crs(percSE) <- "+proj=longlat"
+percSEp <- projectRaster(percSE,crs="+proj=robin",over=T)
+percSE.df = as.data.frame(percSEp,xy=TRUE)
+colnames(percSE.df) <- c('x','y', 'SEperc')
+
+# Absolute increment SE
+absSE <- raster("maps/CO2absSE.tif")
+aSE <- area(absSE)
+absSE <- overlay(absSE, aSE, fun=function(x,y) x/(y*100))
+
+crs(absSE) <- "+proj=longlat"
+absSEp <- projectRaster(absSE,crs="+proj=robin",over=T)
+absSE.df = as.data.frame(absSEp,xy=TRUE)
+colnames(absSE.df) <- c('x','y', 'SEperc')
+
+#### Colours ####
+nord <- read_palette("nord.ase")
+saturate_palette = function(cols, ds=0.4, dv=0.7) {
+  cols = rgb2hsv(col2rgb(cols))
+  cols["v", ] = cols["v", ] + dv*(1 - cols["v", ])
+  cols["s", ] = ds*cols["s", ]
+  apply(cols, 2, function(x) hsv(x[1], x[2], x[3]))
+}
+
+my_aurora <- saturate_palette(nord("aurora",20, reverse=T), ds=1.6, dv=0)
+show_col(my_aurora)
+show_col(nord("aurora",5, reverse=T))
+
+col.uncert2 <- c("#5E81AC","#FFE9AC","#FFC700", "#FF6F25",  "#D41942")
+
+
+wmap <- readOGR(dsn="maps/ne_110m_land", layer="ne_110m_land")
+wmap_wgs <- spTransform(wmap, CRS("+proj=robin"))
+wmap_wgs <- crop(wmap_wgs, extent(inc2p))
+wmap_wgs_df <- fortify(wmap_wgs)
+
+wmap2 <- spTransform(wmap, CRS("+proj=longlat +ellps=WGS84"))
+wmap2 <- crop(wmap2, extent(inc2p))
+wmap2_df <- fortify(wmap2)
+
+# map the bbox
+bbox <- shapefile("maps/ne_110m_wgs84_bounding_box.VERSION/ne_110m_wgs84_bounding_box.shp") 
+bbox_df<- fortify(bbox)
+bbox_robin <- spTransform(bbox, CRS("+proj=robin"))  # reproject bounding box
+bbox_robin_df <- fortify(bbox_robin)
+
+# graticule (Robin)
+grat <- shapefile("maps/ne_110m_graticules_30.VERSION/ne_110m_graticules_30.shp") 
+grat_df <- fortify(grat)
+grat_robin <- spTransform(grat, CRS("+proj=robin"))  # reproject graticule
+grat_df_robin <- fortify(grat_robin)
+
+# create a blank ggplot theme
+theme_opts <- list(theme(panel.grid.minor = element_blank(),
+                         panel.grid.major = element_blank(),
+                         panel.background = element_blank(),
+                         #plot.background = element_rect(fill="#e6e8ed"),
+                         panel.border = element_blank(),
+                         axis.line = element_blank(),
+                         axis.text.x = element_blank(),
+                         axis.text.y = element_blank(),
+                         axis.ticks = element_blank(),
+                         axis.title.y = element_blank(),
+                         plot.title = element_text(size=22),
+                         plot.margin = unit(c(.5,-.5,.5,-.5), "lines"), 
+                         legend.title = element_blank(),
+                         axis.title.x = element_text(margin = margin(t = -10, r = 0, b = 0, l = 0)),
+                         legend.margin=margin(t=-.5, r=0, b=0, l=0, unit="lines"), 
+                         legend.position="bottom", 
+                         legend.direction = "horizontal",
+                         legend.key.width = unit(1, "cm"), 
+                         legend.key.height = unit(0.2, "cm"),
+                         legend.text = element_text(margin = margin(t = .2, unit = "lines"))
+))
+
+###############################################################
+## Diference in Mg C ha-1 between future and current biomass ##
+###############################################################
+
+p1 <- ggplot()+ 
+  geom_polygon(data=bbox_robin_df, aes(x=long, y=lat), colour=nord["nord3"], fill=nord["nord3"], size = 0.15) +
+  geom_path(data=grat_df_robin, aes(long,lat,group=group),linetype="dashed", color="black", size = 0.1) +
+  geom_polypath(data=wmap_wgs_df, aes(long,lat,group=group),fill= nord["nord6"], color=nord["nord3"], size = 0.3) +
+  geom_raster(data=inc2.df,aes(x,y,fill=inc2)) +
+  scale_fill_gradientn(colours = my_aurora, na.value="transparent", limits=c(0,30)) +
+  xlab(expression(paste("Absolute increase in biomass (Mg C ", ha^-1,")", sep=""))) +
+  coord_equal() + 
+  theme_classic(base_size = 12) + 
+  theme_opts 
+
+p1b <- ggplot()+ 
+  geom_polygon(data=bbox_robin_df, aes(x=long, y=lat), colour=nord["nord3"], fill=nord["nord3"], size = 0.15) +
+  geom_path(data=grat_df_robin, aes(long,lat,group=group),linetype="dashed", color="black", size = 0.1) +
+  geom_polypath(data=wmap_wgs_df, aes(long,lat,group=group),fill= nord["nord6"], color=nord["nord3"], size = 0.3) +
+  geom_raster(data=absSE.df,aes(x,y,fill=SEperc)) +
+  scale_fill_gradientn(colours = col.uncert2, na.value="transparent", limits=c(0,10)) +
+  xlab(expression(paste("Uncertainty in absolute estimate (Mg C ", ha^-1,")", sep=""))) +
+  coord_equal() + theme_classic(base_size = 12) + 
+  theme_opts
+
+##################################
+### Map of percentage increase ###
+##################################
+p2 <- ggplot()+ 
+  geom_polygon(data=bbox_robin_df, aes(x=long, y=lat), colour=nord["nord3"], fill=nord["nord3"], size = 0.15) +
+  geom_path(data=grat_df_robin, aes(long,lat,group=group),linetype="dashed", color="black", size = 0.1) +
+  geom_polypath(data=wmap_wgs_df, aes(long,lat,group=group),fill= nord["nord6"], color=nord["nord3"], size = 0.3) +
+  geom_raster(data=perc.df, aes(x,y,fill=perc)) + 
+  xlab("Relative increase in biomass (%)") +
+  scale_fill_gradientn(colours = my_aurora, na.value="transparent", limits=c(0,30)) +
+  coord_equal() + theme_classic(base_size = 12) +
+  theme_opts
+
+
+p2b <- ggplot()+ 
+  geom_polygon(data=bbox_robin_df, aes(x=long, y=lat), colour=nord["nord3"], fill=nord["nord3"], size = 0.15) +
+  geom_path(data=grat_df_robin, aes(long,lat,group=group),linetype="dashed", color="black", size = 0.1) +
+  geom_polypath(data=wmap_wgs_df, aes(long,lat,group=group),fill= nord["nord6"], color=nord["nord3"], size = 0.3) +
+  geom_raster(data=percSE.df,aes(x,y,fill=SEperc)) +
+  scale_fill_gradientn(colours = col.uncert2, na.value="transparent", limits=c(0,15)) +
+  xlab("Uncertainty in relative estimate (%)") +
+  coord_equal() + theme_classic(base_size = 12) + 
+  theme_opts 
+
+prow <- plot_grid( p2 + theme(plot.margin = unit(c(0,0,0,0), "cm")), 
+                   p1 + theme(plot.margin = unit(c(0,0,0,0), "cm")),
+                   p2b + theme(plot.margin = unit(c(0,0,0,0), "cm")),
+                   p1b + theme(plot.margin = unit(c(0,0,0,0), "cm")),
+                   align = 'h', 
+                   labels = "auto",
+                   hjust = -3, 
+                   nrow = 2,
+                   ncol=2
+)
+require(Cairo)
+save_plot("figures/Fig2.png", prow, dpi=300, base_width = 5, base_height = 3, nrow=2, ncol = 2)
+save_plot("figures/Fig2.pdf", prow, dpi=600, base_width = 5, base_height = 3, nrow=2, ncol = 2)
