@@ -1,0 +1,126 @@
+##############
+###   LAI  ###
+##############
+future <- raster ("CO2absEffect.tif")
+
+zhuCO2 <- as.matrix(read.csv("co2_effects.csv", na.strings = "NaN", stringsAsFactors=FALSE, header=FALSE))
+laiCO2 <- raster(zhuCO2, xmn = -180, xmx = 180, ymn = -90, ymx = 90, crs = "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+ar <- raster("w001000.adf")
+future <- resample(future, laiCO2, method="bilinear", format = "raster", overwrite = TRUE)
+ar.new <- resample(ar,future,method="bilinear",format = "raster", overwrite = TRUE)
+laiCO2new <- overlay(laiCO2, ar.new, fun= function (x,y) {
+  ifelse(y<0.32, 0, ifelse(x<0,0, x))
+})
+
+s1 <- stack(laiCO2new, future)
+df <- as.data.frame(s1,xy=TRUE)
+df <- df %>% mutate(latitude= round(y,0)) 
+
+df2 <- df %>% group_by(latitude) %>% dplyr::summarise(LAICO2 = sum(layer, na.rm=T), BioMg=sum(CO2absEffect, na.rm=T)) %>% mutate (BioTera = BioMg * 10^-6) #Biomass in Mg
+df2 <- as.data.frame(df2[complete.cases(df2),])
+
+cor(df2[,c(2,4)])
+
+mycols <- c("#b3cde3","#ccebc5")
+Abs <- ggplot(df2, aes(x=latitude)) + xlim(-60,80) + 
+  geom_area(aes(y=BioTera, fill="Biomass"), colour="black", size=.2) +
+  geom_area(aes(y= LAICO2*3, fill= "LAI - CO2"), colour="black", size=.2) +
+  scale_fill_manual(values= mycols, labels= c("Biomass (this study)", "LAI (Zhu et al. 2016)")) +
+  scale_y_continuous(name=expression(paste("Abs. change in biomass ", Delta, "250 ppm (TgC)")),
+                     sec.axis = sec_axis(~./3, name = expression(paste("Abs. change in LAI 1982-2009 (",m^2," ", m^-2, " ", yr^-1, ")")))) +
+  labs(x="Latitude", fill=NULL) + 
+  annotate("text", x=-Inf, Inf, label = "atop(italic(r)==0.96,italic(p) < .001)", parse = TRUE, size=5, hjust = -0.1, vjust=1.5) +
+  guides(fill = guide_legend(label.position = "left", label.hjust = 1)) +
+  theme(legend.position = c(1, 1), 
+        legend.justification = c(1, 1),
+        legend.text.align = 0)
+
+#### Relative Change ####
+future <- raster ("CO2relEffect.tif")
+
+zhuCO2 <- as.matrix(read.csv("relative_values.csv", na.strings = "NaN", stringsAsFactors=FALSE, header=FALSE))
+laiCO2 <- raster(zhuCO2, xmn = -180, xmx = 180, ymn = -90, ymx = 90, crs = "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+
+future <- resample(future, laiCO2, method="bilinear", format = "raster", overwrite = TRUE)
+future <- overlay(future, ar.new, fun= function (x,y) {
+  ifelse(y<0.32, 0, ifelse(x<0,0, x))
+})
+laiCO2new <- overlay(laiCO2, ar.new, fun= function (x,y) {
+  ifelse(y<0.32, 0, ifelse(x<0,0, x))
+})
+
+t <- stack(laiCO2new, future)
+dft <- as.data.frame(t,xy=TRUE)
+dft <- dft %>% mutate(latitude= round(y,0)) 
+dft2 <- dft %>% group_by(latitude) %>% dplyr::summarise(LAICO2 = mean(layer.1, na.rm=T), BioMg=mean(layer.2, na.rm=T))
+dft2 <- as.data.frame(dft2[complete.cases(dft2),])
+
+cor(dft2[,c(2,3)])
+
+
+Rel <- ggplot(dft2, aes(x=latitude)) + 
+  xlim(-60,80) +  
+  geom_area(aes(y=BioMg, fill="Biomass"),colour="black", size=.2) +
+  geom_area(aes(y= LAICO2, fill= "LAI - CO2"),colour="black", size=.2) +
+  scale_y_continuous(name=expression(paste("Rel. change in biomass", " ", Delta, "250 ppm ", "(%)")),
+                     sec.axis = sec_axis(~., name = expression(paste("Rel. change in LAI 1982-2009 (%)")))) +
+  scale_fill_manual(values= mycols, labels= c("Biomass (this study)", expression(paste("LAI ", CO[2] )))) +
+ guides(fill = guide_legend(label.position = "left", label.hjust = 1)) +
+  labs(x = "Latitude", fill = NULL) +
+  #annotate("text", x=c(-Inf,-Inf), y=c(Inf, Inf), label = "italic(r)==0.64 \n italic(p) < .001", parse = TRUE, size=4, hjust = -0.1, vjust=c(1,2)) +
+  annotate("text", x=-Inf, Inf, label = "atop(italic(r)==0.88,italic(p) < .001)", parse = TRUE, size=5, hjust = -0.1, vjust=1.5) +
+  theme(legend.position = c(0.75, 0.9), 
+        legend.text.align = 0)
+
+##############
+### TRENDY ###
+##############
+dat <- read.csv("TRENDY.csv")
+dat[dat$Model %in% "Global FACE (this study)", "beta"] <- TotBiom100r
+dat[dat$Model %in% "Global FACE (this study)", "se"] <-TotBiomSE100r
+
+trendy <- ggplot(dat, aes(x=reorder(Model, order), beta, fill= col_group, ymin=beta-se, ymax=beta+se)) + 
+  geom_errorbar(size=.2,width=.3) + scale_y_continuous(expand = c(0, 0), limits=c(0,30)) +
+  geom_bar(aes(col=cn_group),stat = "identity", position = "identity",width=.55, size=1) + 
+  xlab(NULL) + ylab (expression(paste("Biomass ", beta, " (PgC 100 ", ppm^-1,")", sep=" "))) +
+  scale_color_manual(values=c("black", "#E68310", "#008695"), name="") + 
+  scale_fill_manual(values = c("#EBB851","#5B8EC1","#2F67AC"),guide=FALSE) + 
+  guides(color = guide_legend(override.aes = list(fill = "transparent"))) +
+  geom_vline(xintercept=9+0.5,linetype=2) +
+  theme(axis.ticks.y=element_blank(),
+        axis.text.x = element_text(angle = 45, 
+                                   #size  = 10, 
+                                   hjust = 1,vjust = 1)
+  )
+
+### COWPLOT ###
+plots <- align_plots(Rel + guides(fill=FALSE) , trendy, align = 'v', axis = 'l')
+
+LAIrel <- ggdraw() +
+  draw_plot(plots[[1]], 0, 0, 1, 1)
+#draw_plot(lai1, .14, .72, 0.25, 0.25)
+
+LAIabs <- ggdraw() +
+  draw_plot(Abs, 0, 0, 1, 1)
+#draw_plot(lai2, .14, .72, 0.25, 0.25)
+
+greennessH <- plot_grid(LAIrel + theme(plot.margin = unit(c(0,0,0,0), "pt")),
+                        LAIabs + theme(plot.margin = unit(c(0,0,0,0), "pt")),
+                        ncol = 2,
+                        labels = c("b","c"),
+                        vjust = 1.2, hjust = .1,
+                        align = "vh"
+)
+
+bottom2 <- plot_grid(plots[[2]],
+                     labels = c("a"),
+                     vjust = 1, hjust = .1)
+
+all <- plot_grid(bottom2 + theme(plot.margin = unit(c(5,0,0,3), "pt")), 
+                 greennessH + theme(plot.margin = unit(c(-5,0,0,3), "pt")),
+                 ncol = 1,
+                 nrow=2,
+                 rel_heights = c(1, 1.2))
+all
+save_plot("figures/Fig3.png", all, base_height = 4, base_width = 9, nrow=2, ncol=1, dpi=300)
+save_plot("figures/Fig3.pdf", all, base_height = 4, base_width = 9, nrow=2, ncol=1, dpi=600, device=cairo_pdf, fallback_resolution = 600)
