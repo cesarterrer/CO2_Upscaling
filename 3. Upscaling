@@ -48,3 +48,30 @@ Bcurrent_se <- Bcurrent + Bcurrent * relSE/100
 Bse_Inc <- Bcurrent_se - Bcurrent
 cellStats(Bse_Inc,"sum", na.rm=T) * 10^(-9) # Absolute error
 (cellStats(Bse_Inc,"sum", na.rm=T) * 100) / cellStats(Bcurrent,"sum", na.rm=T)
+
+#####################
+### UNCERTAINTIES ###
+#####################
+# model with climate and soil predictors
+all.se <- rma.mv(yi, vi, data=data, mods= ~ CNr_recip + P_recip + Fumigation.type + MAP2 + MAT,
+                random = ~ 1 | Site.Name / obs)
+source("load_maps_SE.R") 
+se.df <- as.data.frame(s,xy=TRUE)
+se.df <- se.df[,c("x", "y", "P", "CNr", "MAP", "MAT")] 
+se.df$CNr_recip <- 1/se.df$CNr
+se.df$P_recip <- 1/se.df$P
+se.df$Fumigation.type <- factor("FACE", levels=c("FACE","G","OTC"))
+contrasts(se.df$Fumigation.type) <- cbind(
+  FaceG_OTC = c(-1, -1,  2),
+  Face_G    = c(-1,  1,  0))
+se.pred <- se.df[,c("CNr_recip", "P_recip", "Fumigation.type", "MAP", "MAT")]
+se.pred <- dummy.data.frame("Fumigation.type",data=se.pred, sep = "",drop=FALSE)
+Allse <- as.data.frame.list(predict(all.se, newmods =cbind(se.pred$CNr_recip, se.pred$P_recip, se.pred$Fumigation.typeG, se.pred$Fumigation.typeOTC,
+                                                         se.pred$MAP, se.pred$MAT), addx=T))
+Allse <- cbind(se.df[1:2], Allse)
+AllrelSE <- rasterFromXYZ(Allse[,c("x", "y", "se")],crs="+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+AllrelSE <- make_pct(AllrelSE)
+AllrelSE <- overlay(AllrelSE,fun=function(x){ifelse(x<0, 0, x)})
+
+Bse <- Bcurrent + Bcurrent * relSE/100
+BseInc <- Bse - Bcurrent
