@@ -1,0 +1,69 @@
+###################
+### ZONAL STATS ###
+###################
+ ### Absolute #####
+esa <- raster("ESA_PAN.tif")
+levels(esa)
+dif <- stack(esa,Bincrement, Bse_Inc)
+dif.df <- as.data.frame(dif)
+
+dif.biome <- dif.df %>% dplyr::filter(!is.na(layer.1), layer.1 != 0, !is.na(layer.2), layer.2 != 0) %>% group_by(ESA_PAN_category) %>%  
+  dplyr::summarise (IncSum= sum(layer.1), IncSumSE= sum(layer.2)) %>% 
+  dplyr::mutate(IncSumPg=round(IncSum*10^-9,digits=2),
+                IncSumSEPg=round(IncSumSE*10^-9,digits=2)) %>% droplevels()
+
+#### Percentage #####
+perc <- stack(esa,relES, relSE)
+perc.df <- as.data.frame(perc)
+
+perc.biome <- perc.df %>% na.omit() %>% dplyr::filter(layer.1 != 0, layer.2 != 0) %>% group_by(ESA_PAN_category) %>%  
+  dplyr::summarise (Perc= round(mean(layer.1,0),1), 
+                    PercSE= round(mean(layer.2,0)))
+
+summary_table <- merge(perc.biome, dif.biome)
+
+#### Biome Stats ####
+biome_stats <- stack(esa, s[["AM"]], s[["ECM"]], s[["CNr"]], s[["P"]])
+biome.df <- as.data.frame(biome_stats, xy=TRUE)
+biome.df$Myc <- with(biome.df,ifelse(AM>ECM,"AM", ifelse(AM==ECM,"AM/ECM", "ECM")))
+biome.df <- biome.df %>% na.omit() %>% group_by(ESA_PAN_category, Myc) %>%  
+  dplyr::summarise_all (mean,na.rm=TRUE) %>% mutate(AM2=(AM*100)/(AM+ECM), ECM2=(ECM*100)/(AM+ECM)) %>% 
+  mutate_if(is.numeric, ~round(.,1))
+
+summary_table <- merge(biome.df, summary_table)
+write.csv(summary_table, file = "tables/Summary Table.csv")
+
+##### GLOBAL DRIVERS #####
+np.r <- stack(relES, s[["ECM"]], s[["P"]], s[["AM"]], s[["CNr"]])
+np.df <- as.data.frame(np.r, xy=TRUE)
+np.lat <- np.df %>% mutate(latitude= round(y,0)) %>% group_by(latitude) %>% 
+  dplyr::summarise_all(mean,na.rm=TRUE) %>% na.omit(layer) %>% dplyr::select(-x,-y) %>%
+  rename(RelEffect=layer, CN=CNr)
+
+dat.m <- melt(np.lat, "latitude")
+
+# Tundra: >65
+# Boreal: 50-65
+# Temperate forests and grassland: 35-50
+# Deserts: 15-35
+# Tropical forest: 0-15
+clims <- c(-50,-35,-15,15,35,50,65)
+ann_text <- data.frame(latitude = c( (-50+35)/2-35, (-35+15)/2-15, 0, (35-15)/2+15, 
+                                     (50-35)/2+35, (65-50)/2+50, (83-65)/2+65) , 
+                       value = 13,
+                       lab = c("Temperate", "Desert", "Tropical", "Desert", "Temperate", "Boreal", "Tundra"),
+                       variable = factor("RelEffect",levels = c("RelEffect","ECM","P","AM","CN")))
+
+drivers <- ggplot(dat.m, aes(latitude, value, colour = variable)) + geom_line() +
+  facet_wrap(~variable, scales = "free_y", ncol = 1, 
+             labeller = as_labeller(c(RelEffect = "Relative CO2 effect (%)", 
+                                      ECM = "ECM (%)", P = "P (ppm)",
+                                      AM = "AM (%)", CN = "C:N") ) ) +
+  geom_vline(xintercept=clims, colour="grey") +
+  geom_text(size=3,data = ann_text,aes(label = lab), col="black") +
+  labs(x="Latitude", y=NULL) +
+  guides(col=FALSE) +
+  theme(panel.spacing = unit(0, "lines"))
+
+save_plot("Global drivers.png", drivers, base_height = 6, base_width = 7, dpi=300)
+save_plot("Global drivers.pdf", drivers, base_height = 6, base_width = 7, useDingbats=F)
