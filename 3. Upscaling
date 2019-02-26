@@ -21,7 +21,7 @@ AMrelES <- make_pct(AMrelES * s[["AM"]]/100)
 AMrelSE <- rasterFromXYZ(AMpred[,c("x", "y", "se")],crs="+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
 AMrelSE <- make_pct(AMrelSE * s[["AM"]]/100)
 
-# ECM
+writeRaster# ECM
 options(na.action = "na.pass")
 Ppred <- as.data.frame.list(predict(ecm.mv, newmods =cbind(s.pred$P_recip, s.pred$CNr_recip, s.pred$Fumigation.typeG, s.pred$Fumigation.typeOTC), addx=T))
 Ppred <- cbind(s.df[1:2], Ppred)
@@ -43,7 +43,6 @@ Bfuture <- Bcurrent + Bcurrent * relES/100
 Bincrement <- Bfuture - Bcurrent
 cellStats(Bincrement,"sum", na.rm=T) * 10^-9 # eCO2-driven Biomass increment
 (cellStats(Bincrement,"sum", na.rm=T) * 100) / cellStats(Bcurrent,"sum", na.rm=T) # % increase
-writeRaster(Bincrement,"~/OneDrive/OneDrive - Universitat Autònoma de Barcelona/IIASA/Upscaling_Biomass/Maps/CO2absEffect.tif",overwrite=TRUE)
 
 Bcurrent_se <- Bcurrent + Bcurrent * relSE/100
 Bse_Inc <- Bcurrent_se - Bcurrent
