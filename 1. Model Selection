@@ -229,9 +229,3 @@ write.csv(imp, "importance.csv")
 
 # FINAL MODEL
 final_aicc <- res2@objects[[1]]
-# Myc + Fumigation.type + CNr_recip + P_recip + Myc:P_recip
-knotsCNr <- c(9,12,16)
-knotsP   <- c(4,7,10)
-final_aicc <- rma(Y, V, data=data , mods= ~ Fumigation.type + Myc*rcs(CNr, knotsCNr) + Myc*rcs(P, knotsP), knha=TRUE, control=list(stepadj=0.5))
-summary(final_aicc)
-X_final_aicc <- model.matrix(~ Fumigation.type + Myc*rcs(CNr, knotsCNr) + Myc*rcs(P, knotsP), data)[,-1]
