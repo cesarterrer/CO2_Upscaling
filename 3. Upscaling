@@ -21,7 +21,7 @@ AMrelES <- make_pct(AMrelES * s[["AM"]]/100)
 AMrelSE <- rasterFromXYZ(AMpred[,c("x", "y", "se")],crs="+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
 AMrelSE <- make_pct(AMrelSE * s[["AM"]]/100)
 
-writeRaster# ECM
+# ECM
 options(na.action = "na.pass")
 Ppred <- as.data.frame.list(predict(ecm.mv, newmods =cbind(s.pred$P_recip, s.pred$CNr_recip, s.pred$Fumigation.typeG, s.pred$Fumigation.typeOTC), addx=T))
 Ppred <- cbind(s.df[1:2], Ppred)
@@ -93,7 +93,7 @@ total.df <- group_by(total.df, ESA_PANratios_category) %>%
   mutate(IncSumPg=round(IncSum*10^-9,2),
          IncSumSEPg=round(IncSumSE*10^-9,2)) %>% droplevels()
 
-#Calculate the increase in TOTAL BIOMASS using TB ratios from Liu et al.
+#Calculate the increase in TOTAL BIOMASS using TB ratios from the literature
 library("readxl")
 ratios <- read_excel("TBratio.xlsx", col_types = c("text", "numeric", "numeric", "guess", "guess"))
 
@@ -126,7 +126,6 @@ modis.df <- as.data.frame(s.modis)
 modis.df <- modis.df %>% filter(!is.na(layer.2), layer.2 != 0) %>% group_by(layer.1) %>%  
   dplyr::summarise (IncSum= sum(layer.2, na.rm=T)) %>% mutate(IncSumPg=round(IncSum*10^-9,2)) %>% droplevels()
 
-# Calculate the increase in TOTAL BIOMASS using TB ratios from Liu et al.
 ratios <- read.csv("TBratiosMODIS.csv")
 modis.df <- merge(modis.df,ratios, by.x="layer.1", by.y="ID")
 modis.df$TotBiom <- round(modis.df$IncSumPg * modis.df$TBratio,2)
