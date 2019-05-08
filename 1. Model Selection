@@ -14,15 +14,18 @@ levels(dat$Biome) <- list("Bo" = "Boreal_Forest","Cr"="Cropland", "Gr"="Grasslan
 # Record which variables have a lot of missingness, so that we might later be
 # skeptical about any findings involving those variables
 
-moderators <- c(# "field" information specific for the individual studies
+moderators <- c(# REAL "field" information specific for the individual studies
   "Myc", "CNr", "P", "TotN", "pH", # Nutritional moderators. Myc = mycorrhizal type, CNr= soil C:N ratio,
   "Biome", "Fumigation.type", "Age", "Nyears", "deltaco2", # Experimental moderators
   "MAT", "MAP2", # Climatic moderators. MAT=temperature, MAP2=precipitation
   # EXTRACTED information from global datasets at ~1km resolution
   "Clay", "CEC", "ENa", "Ktot", # Nutritional moderators
   "PamountOlsen", "PamountMehlich", "Pretention", "PTot", "Ptot_ORNL", "Plabile", "Porg", "Poccluded", "Psecondary", "Papatite", # Alternative approaches to account for phosphorus (P) availability. Lots of NAs in these products
-  "AGTcru0", "AGTcru5", "GDD", "SolRad", "Twarm" , "Gaussen", "MoistureIndex", # Climatic moderators
-  "Alpha", "PETcru", "AETsplash", "PETsplash2", "waterlim", "moisture") # Climatic moderators  
+  "AGTcru0", "AGTcru5", "GDD", "SolRad", "Twarm" , "Gaussen", "MoistureIndex", # Climatic moderators.These should be highly correlated with MAT and MAP2
+  "Alpha", "PETcru", "AETsplash", "PETsplash2", "waterlim", "moisture", # Climatic moderators. These should be highly correlated with MAP2 and MAT    
+  "T_Day.range","Isothermality","T_seasonality","Tmax_warmestM","Tmin_coldestM", "T_An.range",
+  "T_wettestQ","T_driestsQ","T_warmestQ", "T_coldestQ","P_wettestM","P_driestM","P_seasonality",
+  "P_wettestQ","P_driestQ","P_warmestQ","P_coldestQ")
 
 df <- dat[, moderators]
 missingness <- sapply(df, function(x) sum(is.na(x))/length(x))
@@ -56,9 +59,17 @@ fa.parallel(dat[,c("Clay", "CEC", "ENa", "Ktot")], use = "pairwise.complete.obs"
 principal(dat[,c("Clay", "CEC", "ENa", "Ktot")], nfactors = 2)
 
 # Dimension reduction on semi-theoretical grouds; these are all climatic moderators
-fa.parallel(dat[,c("AGTcru0", "AGTcru5", "GDD", "SolRad", "Twarm", "Alpha", "PETcru", "AETsplash", "PETsplash2", "waterlim", "moisture","Gaussen", "MoistureIndex")], use = "pairwise.complete.obs")
+fa.parallel(dat[,c("AGTcru0", "AGTcru5", "GDD", "SolRad", "Twarm" , "Gaussen", "MoistureIndex", 
+                   "Alpha", "PETcru", "AETsplash", "PETsplash2", "waterlim", "moisture",   
+                   "T_Day.range","Isothermality","T_seasonality","Tmax_warmestM","Tmin_coldestM", "T_An.range",
+                   "T_wettestQ","T_driestsQ","T_warmestQ", "T_coldestQ","P_wettestM","P_driestM","P_seasonality",
+                   "P_wettestQ","P_driestQ","P_warmestQ","P_coldestQ")], use = "pairwise.complete.obs")
 # Parallel analysis suggests two components
-clima.pca <- principal(dat[,c("AGTcru0", "AGTcru5", "GDD", "SolRad", "Twarm", "Alpha", "PETcru", "AETsplash", "PETsplash2", "waterlim", "moisture", "Gaussen", "MoistureIndex")], nfactors = 2)
+clima.pca <- principal(dat[,c("AGTcru0", "AGTcru5", "GDD", "SolRad", "Twarm" , "Gaussen", "MoistureIndex", 
+                              "Alpha", "PETcru", "AETsplash", "PETsplash2", "waterlim", "moisture",
+                              "T_Day.range","Isothermality","T_seasonality","Tmax_warmestM","Tmin_coldestM", "T_An.range",
+                              "T_wettestQ","T_driestsQ","T_warmestQ", "T_coldestQ","P_wettestM","P_driestM","P_seasonality",
+                              "P_wettestQ","P_driestQ","P_warmestQ","P_coldestQ")], nfactors = 2)
 dat$clima_pca1 <- clima.pca$scores[,1]
 dat$clima_pca2 <- clima.pca$scores[,2]
 
@@ -69,6 +80,15 @@ saveRDS(dat, "imputed_dat.RData")
 #######################
 
 # Meta-Forest
+moderators <- c(
+  # REAL "field" information specific for the individual studies
+  "Myc", "CNr", "P", "TotN", "pH", # Nutritional moderators. Myc = mycorrhizal type, CNr= soil C:N ratio,
+  "Biome", "Fumigation.type", "Age", "Nyears", "deltaco2", # Experimental moderators
+  "MAT", "MAP2", # Climatic moderators. MAT=temperature, MAP2=precipitation
+  # EXTRACTED information from global datasets at ~1km resolution
+  "Clay", "CEC", "ENa", "Ktot", # Nutritional moderators
+  "P_pca", "clima_pca1", "clima_pca2") # Factor scores for phosphorous and climate
+
 set.seed(36326)
 # Check how many iterations metaforest needs to converge
 check_conv <- MetaForest(as.formula(paste0("yi~", paste(moderators, collapse = "+"))),
